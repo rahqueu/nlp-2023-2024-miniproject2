@@ -86,9 +86,8 @@ def apply_preprocessing(text):
     return ' '.join(lemmatized_tokens)
 
 
-for el in X:
-    el = apply_preprocessing(el)
-    print(el)
+for i in range(len(X)):
+    X[i] = apply_preprocessing(X[i])
 
 # missing pre-processing step: tokenizaition, lowercasing, tirar stop words, pontuação e outros caracteres random
 
