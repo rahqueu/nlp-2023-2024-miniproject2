@@ -1,5 +1,4 @@
 import pandas as pd
-import sklearn
 import string
 import re
 import nltk
@@ -7,12 +6,11 @@ from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, TfidfVectorizer
 from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import classification_report, accuracy_score
 from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline
 
 train_path = './given_files/train.txt'
 
@@ -90,10 +88,8 @@ def apply_preprocessing(text):
     lemmatized_tokens = [lemmatizer.lemmatize(token) for token in filtered_tokens]
 
     return ' '.join(lemmatized_tokens)
-    
-    
-for i in range(len(X)):
-    X[i] = apply_preprocessing(X[i])
+
+X = X.apply(apply_preprocessing)
 
 
 # dividing data according to train.txt (1400 lines) and test_just_reviews.txt (200 lines) sizing -> 0.125 test size

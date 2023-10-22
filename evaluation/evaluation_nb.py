@@ -1,17 +1,19 @@
 import pandas as pd
-import sklearn
 import string
 import re
+import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.pipeline import Pipeline
 from sklearn.metrics import classification_report
 from sklearn.metrics import accuracy_score
+from sklearn.model_selection import GridSearchCV
 
-train_path = 'given_files/train.txt'
+train_path = './given_files/train.txt'
 train_df = pd.read_csv(train_path, sep='\t', names=['label', 'review'])
 print(train_df.head())
 print("\n")
@@ -25,6 +27,7 @@ X_train = train_df['review']
 y_train = train_df['label']
 X_test = test_df['review']
 
+# pre-processing
 def apply_preprocessing(text):
     contractions = {
         "ain't": "am not",
@@ -66,45 +69,53 @@ def apply_preprocessing(text):
         "you'd": "you would",
         "you're": "you are",
     }
-
     lowered = text.lower()
-
-    words = lowered.split()
+    lowered = re.sub(r'[^a-zA-Z\s]', '', lowered)
+    words = nltk.word_tokenize(lowered)
+    
     result = []
     for word in words:
         result.append(contractions.get(word, word))
     preproc = ' '.join(result)
 
     tokens = word_tokenize(preproc, "english")
-
+    
     for token in tokens:
         if(all(char in string.punctuation for char in token)):
             tokens.remove(token)
 
-    stop_words = stopwords.words('english')
+    stop_words = set(stopwords.words('english'))
     filtered_tokens = [word for word in tokens if word not in stop_words]
 
     lemmatizer = WordNetLemmatizer()
     lemmatized_tokens = [lemmatizer.lemmatize(token) for token in filtered_tokens]
-
+    
     return ' '.join(lemmatized_tokens)
 
-for i in range(len(X_train)):
-    X_train[i] = apply_preprocessing(X_train[i])
-    
-for i in range(len(X_test)):
-    X_test[i] = apply_preprocessing(X_test[i])
+X_train = X_train.apply(apply_preprocessing)
+X_test = X_test.apply(apply_preprocessing)
 
-tfidf_vectorizer = TfidfVectorizer(max_features = 5000)
-X_train_tfidf = tfidf_vectorizer.fit_transform(X_train)
+text_clf = Pipeline([
+    ('vect', CountVectorizer(max_features=5000)),
+    ('tfidf', TfidfTransformer()),
+    ('clf', MultinomialNB()),
+])
 
-logistic_classifier = LogisticRegression(C=1.0, penalty='l2', solver='liblinear')
-logistic_classifier.fit(X_train_tfidf, y_train)
+# Grid search parameters
+param_grid = {
+    'vect__max_features': [1000, 3000, 5000, 10000, 15000, 20000],
+    'tfidf__use_idf': [True, False],
+    'clf__alpha': [0.1, 0.5, 1.0],
+}
 
-X_test_tfidf = tfidf_vectorizer.transform(X_test)
-y_test_pred = logistic_classifier.predict(X_test_tfidf)
+grid_search = GridSearchCV(text_clf, param_grid, cv=3)
+grid_search.fit(X_train, y_train)
 
-output_path = 'output/labels_logreg.txt'
+best_text_clf = grid_search.best_estimator_
+
+y_test_pred = best_text_clf.predict(X_test)
+
+output_path = 'output/labels_nb.txt'
 
 with open(output_path, 'w') as output:
     for label in y_test_pred:
