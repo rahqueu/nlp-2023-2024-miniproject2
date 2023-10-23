@@ -1,4 +1,5 @@
 import pandas as pd
+import sklearn
 import string
 import re
 import nltk
@@ -13,21 +14,14 @@ from sklearn.metrics import classification_report
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import GridSearchCV
 
+# load data and create data frame
 train_path = './given_files/train.txt'
-train_df = pd.read_csv(train_path, sep='\t', names=['label', 'review'])
-print(train_df.head())
-print("\n")
+df = pd.read_csv(train_path, sep='\t', names=['label', 'review'])
 
-test_path = './given_files/test_just_reviews.txt'
-test_df = pd.read_csv(test_path, sep='\t', header=None, names=['review'])
-print(test_df.head())
-print("\n")
+X = df['review']
+y = df['label']
 
-X_train = train_df['review']
-y_train = train_df['label']
-X_test = test_df['review']
-
-# pre-processing
+# pre-processing function
 def apply_preprocessing(text):
     contractions = {
         "ain't": "am not",
@@ -60,6 +54,7 @@ def apply_preprocessing(text):
         "wasn't": "was not",
         "we'd": "we would",
         "we're": "we are",
+        "we've": "we have",
         "weren't": "were not",
         "what's": "what is",
         "who's": "who is",
@@ -68,7 +63,9 @@ def apply_preprocessing(text):
         "would've" : "would have",
         "you'd": "you would",
         "you're": "you are",
+        "you've": "you have",
     }
+    
     lowered = text.lower()
     lowered = re.sub(r'[^a-zA-Z\s]', '', lowered)
     words = nltk.word_tokenize(lowered)
@@ -89,34 +86,52 @@ def apply_preprocessing(text):
 
     lemmatizer = WordNetLemmatizer()
     lemmatized_tokens = [lemmatizer.lemmatize(token) for token in filtered_tokens]
-    
+
     return ' '.join(lemmatized_tokens)
 
-X_train = X_train.apply(apply_preprocessing)
-X_test = X_test.apply(apply_preprocessing)
+# applying pre-processing
+X = X.apply(apply_preprocessing)
 
-text_clf = Pipeline([
+# spliting the data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.125, random_state=1)
+
+# Naive Bayes pipeline with CountVectorizer and TF-IDF
+nb_pipeline = Pipeline([
     ('vect', CountVectorizer(max_features=5000)),
     ('tfidf', TfidfTransformer()),
     ('clf', MultinomialNB()),
 ])
 
-# Grid search parameters
+# parameters for grid search
 param_grid = {
     'vect__max_features': [1000, 3000, 5000, 10000, 15000, 20000],
     'tfidf__use_idf': [True, False],
-    'clf__alpha': [0.1, 0.5, 1.0],
+    'clf__alpha': [0.1, 0.2, 0.5, 1.0],
 }
 
-grid_search = GridSearchCV(text_clf, param_grid, cv=3)
+grid_search = GridSearchCV(nb_pipeline, param_grid, cv=5)
 grid_search.fit(X_train, y_train)
 
-best_text_clf = grid_search.best_estimator_
+best_nb = grid_search.best_estimator_
+y_test_pred = best_nb.predict(X_test)
 
-y_test_pred = best_text_clf.predict(X_test)
+print(f" \n Best parameters: {grid_search.best_params_} \n")
 
-output_path = 'output/labels_nb.txt'
+# evaluation
+print(f"Testing Set Classification Report: \n {classification_report(y_test, y_test_pred)} \n")
 
-with open(output_path, 'w') as output:
-    for label in y_test_pred:
-        output.write(label + '\n')
+confusion_matrix = sklearn.metrics.confusion_matrix(y_test, y_test_pred)
+
+labels_accuracies = []
+for i in range(len(confusion_matrix)):
+    tp = confusion_matrix[i, i]
+    fn = confusion_matrix[i, :].sum() - tp
+    accuracy = tp / (tp + fn)
+    labels_accuracies.append(accuracy)
+
+labels_names = best_nb.classes_
+label_accuracy = dict(zip(labels_names, labels_accuracies))
+print(f"Label Accuracies: {label_accuracy} \n")
+
+accuracy = accuracy_score(y_test, y_test_pred)*100
+print(f"Global Accuracy: {accuracy:.2f}%")

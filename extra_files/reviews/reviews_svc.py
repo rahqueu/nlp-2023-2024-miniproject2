@@ -1,28 +1,29 @@
 import pandas as pd
+import sklearn
 import string
 import re
 import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer, PorterStemmer
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import classification_report
-from sklearn.metrics import accuracy_score
+from nltk.stem import WordNetLemmatizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, accuracy_score
 from sklearn.model_selection import GridSearchCV
 
-# Load the data
+# load training data and create data frame
 train_path = './given_files/train.txt'
-df = pd.read_csv(train_path, sep='\t', names=['label', 'review'])
-print(df.head())
-print("\n")
+train_df = pd.read_csv(train_path, sep='\t', names=['label', 'review'])
 
-X = df['review']
-y = df['label']
+# load testing data and create data frame
+test_path = './given_files/test_just_reviews.txt'
+test_df = pd.read_csv(test_path, sep='\t', header=None, names=['review'])
 
-# Pre-processing function
+X_train = train_df['review']
+y_train = train_df['label']
+X_test = test_df['review']
+
+# pre-processing function
 def apply_preprocessing(text):
     contractions = {
         "ain't": "am not",
@@ -55,7 +56,6 @@ def apply_preprocessing(text):
         "wasn't": "was not",
         "we'd": "we would",
         "we're": "we are",
-        "we've": "we have",
         "weren't": "were not",
         "what's": "what is",
         "who's": "who is",
@@ -64,9 +64,7 @@ def apply_preprocessing(text):
         "would've" : "would have",
         "you'd": "you would",
         "you're": "you are",
-        "you've": "you have",
     }
-    
     lowered = text.lower()
     lowered = re.sub(r'[^a-zA-Z\s]', '', lowered)
     words = nltk.word_tokenize(lowered)
@@ -87,41 +85,38 @@ def apply_preprocessing(text):
 
     lemmatizer = WordNetLemmatizer()
     lemmatized_tokens = [lemmatizer.lemmatize(token) for token in filtered_tokens]
-
+    
     return ' '.join(lemmatized_tokens)
 
-X = X.apply(apply_preprocessing)
 
-# Split the data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.125, random_state=1)
-print("Training data shape: ", X_train.shape)
-print("Testing data shape: ", X_test.shape)
-print("\n")
+# applying pre-processing
+X_train = X_train.apply(apply_preprocessing)
+X_test = X_test.apply(apply_preprocessing)
 
-# Define a Naive Bayes pipeline with CountVectorizer and TF-IDF
-text_clf = Pipeline([
-    ('vect', CountVectorizer(max_features=5000)),
-    ('tfidf', TfidfTransformer()),
-    ('clf', MultinomialNB()),
-])
+# feature extraction: TF-IDF
+tfidf_vectorizer = TfidfVectorizer(max_features=5000)
+X_train_tfidf = tfidf_vectorizer.fit_transform(X_train)
 
-# Grid search parameters
+# model : SVC
 param_grid = {
-    'vect__max_features': [1000, 3000, 5000, 10000],
-    'tfidf__use_idf': [True, False],
-    'clf__alpha': [0.1, 0.5, 1.0],
+    'C': [0.01, 0.1, 0.575, 1, 2, 4, 10],
+    'kernel': ['linear', 'rbf']
 }
 
-grid_search = GridSearchCV(text_clf, param_grid, cv=3)
-grid_search.fit(X_train, y_train)
+svc_classifier = SVC()
 
-best_text_clf = grid_search.best_estimator_
+grid_search = GridSearchCV(svc_classifier, param_grid=param_grid, cv=3)
+grid_search.fit(X_train_tfidf, y_train)
+best_svc = grid_search.best_estimator_
 
-y_test_pred = best_text_clf.predict(X_test)
-# Evaluation
-print("Testing Set Classification Report for Testing Set:")
-print(classification_report(y_test, y_test_pred))
-print("\n")
+X_test_tfidf = tfidf_vectorizer.transform(X_test)
+y_test_pred = best_svc.predict(X_test_tfidf)
 
-testing_accuracy = accuracy_score(y_test, y_test_pred)
-print("Testing Accuracy: " + str(testing_accuracy))
+print(f"Best parameters: {grid_search.best_params_} \n")
+
+# writing the results to a file
+output_path = 'extra_files/results/results_svc.txt'
+with open(output_path, 'w') as output:
+    for label in y_test_pred:
+        output.write(label + '\n')
+print(f"Results written to {output_path}")

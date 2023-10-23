@@ -1,27 +1,29 @@
 import pandas as pd
-import sklearn
 import string
 import re
+import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report
-from sklearn.metrics import accuracy_score
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import classification_report, accuracy_score
+from sklearn.model_selection import GridSearchCV
 
+# load training data and create data frame
 train_path = './given_files/train.txt'
+train_df = pd.read_csv(train_path, sep='\t', names=['label', 'review'])
 
-df = pd.read_csv(train_path, sep = '\t', names = ['label', 'review'])
-print(df.head())
-print("\n")
+# load testing data and create data frame
+test_path = './given_files/test_just_reviews.txt'
+test_df = pd.read_csv(test_path, sep='\t', header=None, names=['review'])
 
-X = df['review']
-y = df['label']
+X_train = train_df['review']
+y_train = train_df['label']
+X_test = test_df['review']
 
-# pre-processing: tokenizaition, lowercasing, tirar stop words, pontuação e outros caracteres random
+# pre-processing function
 def apply_preprocessing(text):
     contractions = {
         "ain't": "am not",
@@ -63,9 +65,9 @@ def apply_preprocessing(text):
         "you'd": "you would",
         "you're": "you are",
     }
-
     lowered = text.lower()
-    words = lowered.split()
+    lowered = re.sub(r'[^a-zA-Z\s]', '', lowered)
+    words = nltk.word_tokenize(lowered)
     
     result = []
     for word in words:
@@ -82,39 +84,39 @@ def apply_preprocessing(text):
     filtered_tokens = [word for word in tokens if word not in stop_words]
 
     lemmatizer = WordNetLemmatizer()
-    #lemmatized_tokens = [lemmatizer.lemmatize(token) for token in tokens]
     lemmatized_tokens = [lemmatizer.lemmatize(token) for token in filtered_tokens]
-
+    
     return ' '.join(lemmatized_tokens)
 
+# applying pre-processing
+X_train = X_train.apply(apply_preprocessing)
+X_test = X_test.apply(apply_preprocessing)
 
-for i in range(len(X)):
-    X[i] = apply_preprocessing(X[i])
+# Naive Bayes pipeline with CountVectorizer and TF-IDF
+nb_pipeline = Pipeline([
+    ('vect', CountVectorizer(max_features=5000)),
+    ('tfidf', TfidfTransformer()),
+    ('clf', MultinomialNB()),
+])
 
+# parameters for grid search
+param_grid = {
+    'vect__max_features': [1000, 3000, 5000, 10000, 15000, 20000],
+    'tfidf__use_idf': [True, False],
+    'clf__alpha': [0.1, 0.2, 0.5, 1.0],
+}
 
-# dividing data according to train.txt (1400 lines) and test_just_reviews.txt (200 lines) sizing -> 0.125 test size
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.125, random_state = 1) 
-print("Training data shape: ", X_train.shape)
-print("Testing data shape: ", X_test.shape)
-print("\n")
+grid_search = GridSearchCV(nb_pipeline, param_grid, cv=5)
+grid_search.fit(X_train, y_train)
 
-# feature extraction: tf-idf bc its more complex than bag of words and fixes some issues w it but we can also try it
-tfidf_vectorizer = TfidfVectorizer(max_features=5000)
-X_train_tfidf = tfidf_vectorizer.fit_transform(X_train)
+best_nb = grid_search.best_estimator_
+y_test_pred = best_nb.predict(X_test)
 
-# model : SVC
-logistic_classifier = LogisticRegression(C = 1.0, penalty= 'l2', solver = 'lbfgs', max_iter = 1000)
-logistic_classifier.fit(X_train_tfidf, y_train)
+print(f"Best parameters: {grid_search.best_params_} \n")
 
-
-X_test_tfidf = tfidf_vectorizer.transform(X_test)
-y_test_pred = logistic_classifier.predict(X_test_tfidf)
-
-
-#evaluation
-print("Testing Set Classification Report for Testing Set:")
-print(classification_report(y_test, y_test_pred))
-print("\n")
-    
-testing_accuracy = accuracy_score(y_test, y_test_pred)
-print("Testing Accuracy: " + str(testing_accuracy))
+# writing the results to a file
+output_path = 'results.txt'
+with open(output_path, 'w') as output:
+    for label in y_test_pred:
+        output.write(label + '\n')
+print(f"Results written to {output_path}")

@@ -9,27 +9,18 @@ from nltk.stem import WordNetLemmatizer
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import classification_report, accuracy_score
 from sklearn.model_selection import GridSearchCV
-from sklearn.pipeline import Pipeline
 
+# load data and create data frame
 train_path = './given_files/train.txt'
-train_df = pd.read_csv(train_path, sep='\t', names=['label', 'review'])
-print(train_df.head())
-print("\n")
 
-test_path = './given_files/test_just_reviews.txt'
-test_df = pd.read_csv(test_path, sep='\t', header=None, names=['review'])
-print(test_df.head())
-print("\n")
+df = pd.read_csv(train_path, sep = '\t', names = ['label', 'review'])
 
-X_train = train_df['review']
-y_train = train_df['label']
-X_test = test_df['review']
+X = df['review']
+y = df['label']
 
-# pre-processing
+# pre-processing function
 def apply_preprocessing(text):
     contractions = {
         "ain't": "am not",
@@ -62,6 +53,7 @@ def apply_preprocessing(text):
         "wasn't": "was not",
         "we'd": "we would",
         "we're": "we are",
+        "we've": "we have",
         "weren't": "were not",
         "what's": "what is",
         "who's": "who is",
@@ -70,7 +62,9 @@ def apply_preprocessing(text):
         "would've" : "would have",
         "you'd": "you would",
         "you're": "you are",
+        "you've": "you have",
     }
+    
     lowered = text.lower()
     lowered = re.sub(r'[^a-zA-Z\s]', '', lowered)
     words = nltk.word_tokenize(lowered)
@@ -91,34 +85,50 @@ def apply_preprocessing(text):
 
     lemmatizer = WordNetLemmatizer()
     lemmatized_tokens = [lemmatizer.lemmatize(token) for token in filtered_tokens]
-    
+
     return ' '.join(lemmatized_tokens)
 
+# applying pre-processing
+X = X.apply(apply_preprocessing)
 
-for i in range(len(X_train)):
-    X_train[i] = apply_preprocessing(X_train[i])
+# spliting the data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.125, random_state = 1) 
 
-for i in range(len(X_test)):
-    X_test[i] = apply_preprocessing(X_test[i])
-
-
-# feature extraction: tf-idf
+# feature extraction: TF-IDF
 tfidf_vectorizer = TfidfVectorizer(max_features=5000)
 X_train_tfidf = tfidf_vectorizer.fit_transform(X_train)
 
 # model : SVC
-param_grid = {'C': [0.01, 0.1, 0.575, 1, 2, 4, 10], 'kernel': ['linear', 'rbf']}
+param_grid = {
+    'C': [0.01, 0.1, 0.575, 1, 2, 4, 10, 100, 1000],
+    'kernel': ['linear', 'rbf']
+}
+
 svm_classifier = SVC()
 
-grid_search_svm = GridSearchCV(svm_classifier, param_grid=param_grid, cv=3)
-grid_search_svm.fit(X_train_tfidf, y_train)
-best_svm = grid_search_svm.best_estimator_
+grid_search = GridSearchCV(svm_classifier, param_grid, cv=3)
+grid_search.fit(X_train_tfidf, y_train)
+
+best_svc = grid_search.best_estimator_
 
 X_test_tfidf = tfidf_vectorizer.transform(X_test)
-y_test_pred = best_svm.predict(X_test_tfidf)
+y_test_pred = best_svc.predict(X_test_tfidf)
 
-output_path = 'output/labels_svc.txt'
+#evaluation
+print(f" \n Testing Set Classification Report: \n {classification_report(y_test, y_test_pred)} \n")
 
-with open(output_path, 'w') as output:
-    for label in y_test_pred:
-        output.write(label + '\n')
+confusion_matrix = sklearn.metrics.confusion_matrix(y_test, y_test_pred)
+
+labels_accuracies = []
+for i in range(len(confusion_matrix)):
+    tp = confusion_matrix[i, i]
+    fn = confusion_matrix[i, :].sum() - tp
+    accuracy = tp / (tp + fn)
+    labels_accuracies.append(accuracy)
+
+labels_names = best_svc.classes_
+label_accuracy = dict(zip(labels_names, labels_accuracies))
+print(f"Label Accuracies: {label_accuracy} \n")
+
+accuracy = accuracy_score(y_test, y_test_pred)*100
+print(f"Global Accuracy: {accuracy:.2f}%")

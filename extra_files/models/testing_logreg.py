@@ -5,26 +5,19 @@ import re
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
+from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import classification_report, accuracy_score
 
-train_path = 'given_files/train.txt'
-train_df = pd.read_csv(train_path, sep='\t', names=['label', 'review'])
-print(train_df.head())
-print("\n")
+# load data and create data frame
+train_path = './given_files/train.txt'
+df = pd.read_csv(train_path, sep = '\t', names = ['label', 'review'])
 
-test_path = './given_files/test_just_reviews.txt'
-test_df = pd.read_csv(test_path, sep='\t', header=None, names=['review'])
-print(test_df.head())
-print("\n")
+X = df['review']
+y = df['label']
 
-X_train = train_df['review']
-y_train = train_df['label']
-X_test = test_df['review']
-
+# pre-processing function
 def apply_preprocessing(text):
     contractions = {
         "ain't": "am not",
@@ -68,20 +61,20 @@ def apply_preprocessing(text):
     }
 
     lowered = text.lower()
-
     words = lowered.split()
+    
     result = []
     for word in words:
         result.append(contractions.get(word, word))
     preproc = ' '.join(result)
 
     tokens = word_tokenize(preproc, "english")
-
+    
     for token in tokens:
         if(all(char in string.punctuation for char in token)):
             tokens.remove(token)
 
-    stop_words = stopwords.words('english')
+    stop_words = set(stopwords.words('english'))
     filtered_tokens = [word for word in tokens if word not in stop_words]
 
     lemmatizer = WordNetLemmatizer()
@@ -89,23 +82,39 @@ def apply_preprocessing(text):
 
     return ' '.join(lemmatized_tokens)
 
-for i in range(len(X_train)):
-    X_train[i] = apply_preprocessing(X_train[i])
-    
-for i in range(len(X_test)):
-    X_test[i] = apply_preprocessing(X_test[i])
+# applying pre-processing
+X = X.apply(apply_preprocessing)
 
-tfidf_vectorizer = TfidfVectorizer(max_features = 5000)
+# spliting the data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.125, random_state = 1) 
+
+# feature extraction: TF-IDF
+tfidf_vectorizer = TfidfVectorizer(max_features=5000)
 X_train_tfidf = tfidf_vectorizer.fit_transform(X_train)
 
-logistic_classifier = LogisticRegression(C=1.0, penalty='l2', solver='liblinear')
+# model : SVC
+logistic_classifier = LogisticRegression(C = 1.0, penalty= 'l2', solver = 'lbfgs', max_iter = 1000)
 logistic_classifier.fit(X_train_tfidf, y_train)
 
 X_test_tfidf = tfidf_vectorizer.transform(X_test)
 y_test_pred = logistic_classifier.predict(X_test_tfidf)
 
-output_path = 'output/labels_logreg.txt'
 
-with open(output_path, 'w') as output:
-    for label in y_test_pred:
-        output.write(label + '\n')
+#evaluation
+print(f" \n Testing Set Classification Report: \n {classification_report(y_test, y_test_pred)} \n")
+
+confusion_matrix = sklearn.metrics.confusion_matrix(y_test, y_test_pred)
+
+labels_accuracies = []
+for i in range(len(confusion_matrix)):
+    tp = confusion_matrix[i, i]
+    fn = confusion_matrix[i, :].sum() - tp
+    accuracy = tp / (tp + fn)
+    labels_accuracies.append(accuracy)
+
+labels_names = logistic_classifier.classes_
+label_accuracy = dict(zip(labels_names, labels_accuracies))
+print(f"Label Accuracies: {label_accuracy} \n")
+
+accuracy = accuracy_score(y_test, y_test_pred)*100
+print(f"Global Accuracy: {accuracy:.2f}%")

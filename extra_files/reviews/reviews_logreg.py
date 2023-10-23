@@ -1,27 +1,27 @@
 import pandas as pd
+import sklearn
 import string
 import re
-import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, TfidfVectorizer
-from sklearn.svm import SVC
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, accuracy_score
-from sklearn.model_selection import GridSearchCV
-from sklearn.pipeline import Pipeline
 
-train_path = './given_files/train.txt'
+# load training data and create data frame
+train_path = 'given_files/train.txt'
+train_df = pd.read_csv(train_path, sep='\t', names=['label', 'review'])
 
-df = pd.read_csv(train_path, sep = '\t', names = ['label', 'review'])
-print(df.head())
-print("\n")
+# load testing data and create data frame
+test_path = './given_files/test_just_reviews.txt'
+test_df = pd.read_csv(test_path, sep='\t', header=None, names=['review'])
 
-X = df['review']
-y = df['label']
+X_train = train_df['review']
+y_train = train_df['label']
+X_test = test_df['review']
 
-# pre-processing
+# pre-processing function
 def apply_preprocessing(text):
     contractions = {
         "ain't": "am not",
@@ -54,7 +54,6 @@ def apply_preprocessing(text):
         "wasn't": "was not",
         "we'd": "we would",
         "we're": "we are",
-        "we've": "we have",
         "weren't": "were not",
         "what's": "what is",
         "who's": "who is",
@@ -63,25 +62,23 @@ def apply_preprocessing(text):
         "would've" : "would have",
         "you'd": "you would",
         "you're": "you are",
-        "you've": "you have",
     }
-    
+
     lowered = text.lower()
-    lowered = re.sub(r'[^a-zA-Z\s]', '', lowered)
-    words = nltk.word_tokenize(lowered)
-    
+
+    words = lowered.split()
     result = []
     for word in words:
         result.append(contractions.get(word, word))
     preproc = ' '.join(result)
 
     tokens = word_tokenize(preproc, "english")
-    
+
     for token in tokens:
         if(all(char in string.punctuation for char in token)):
             tokens.remove(token)
 
-    stop_words = set(stopwords.words('english'))
+    stop_words = stopwords.words('english')
     filtered_tokens = [word for word in tokens if word not in stop_words]
 
     lemmatizer = WordNetLemmatizer()
@@ -89,34 +86,24 @@ def apply_preprocessing(text):
 
     return ' '.join(lemmatized_tokens)
 
-X = X.apply(apply_preprocessing)
+# applying pre-processing
+X_train = X_train.apply(apply_preprocessing)
+X_test = X_test.apply(apply_preprocessing)
 
-
-# dividing data according to train.txt (1400 lines) and test_just_reviews.txt (200 lines) sizing -> 0.125 test size
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.125, random_state = 1) 
-print("Training data shape: ", X_train.shape)
-print("Testing data shape: ", X_test.shape)
-print("\n")
-
-# feature extraction: tf-idf 
-tfidf_vectorizer = TfidfVectorizer(max_features=5000)
+# feature extraction: TF-IDF
+tfidf_vectorizer = TfidfVectorizer(max_features = 5000)
 X_train_tfidf = tfidf_vectorizer.fit_transform(X_train)
 
-# model : SVC
-param_grid = {'C': [0.01, 0.1, 0.575, 1, 2, 4, 10, 100, 1000], 'kernel': ['linear', 'rbf']}
-svm_classifier = SVC()
-
-grid_search = GridSearchCV(svm_classifier, param_grid, cv=3)
-grid_search.fit(X_train_tfidf, y_train)
-best_svm = grid_search.best_estimator_
+# model : Logistic Regression
+logistic_classifier = LogisticRegression(C=1.0, penalty='l2', solver='liblinear')
+logistic_classifier.fit(X_train_tfidf, y_train)
 
 X_test_tfidf = tfidf_vectorizer.transform(X_test)
-y_test_pred = best_svm.predict(X_test_tfidf)
+y_test_pred = logistic_classifier.predict(X_test_tfidf)
 
-#evaluation
-print("Testing Set Classification Report for Testing Set:")
-print(classification_report(y_test, y_test_pred))
-print("\n")
-    
-testing_accuracy = accuracy_score(y_test, y_test_pred)
-print("Testing Accuracy: " + str(testing_accuracy))
+# writing the results to a file
+output_path = 'extra_files/results/results_logreg.txt'
+with open(output_path, 'w') as output:
+    for label in y_test_pred:
+        output.write(label + '\n')
+print(f"Results written to {output_path}")
