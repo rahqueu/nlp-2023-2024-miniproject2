@@ -94,7 +94,7 @@ X_test = X_test.apply(apply_preprocessing)
 
 # Naive Bayes pipeline with CountVectorizer and TF-IDF
 nb_pipeline = Pipeline([
-    ('vect', CountVectorizer(max_features=5000)),
+    ('vect', CountVectorizer()),
     ('tfidf', TfidfTransformer()),
     ('clf', MultinomialNB()),
 ])

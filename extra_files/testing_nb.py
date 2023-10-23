@@ -97,7 +97,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.125, rando
 
 # Naive Bayes pipeline with CountVectorizer and TF-IDF
 nb_pipeline = Pipeline([
-    ('vect', CountVectorizer(max_features=5000)),
+    ('vect', CountVectorizer()),
     ('tfidf', TfidfTransformer()),
     ('clf', MultinomialNB()),
 ])
