@@ -111,6 +111,7 @@ y_test_pred = best_classifier.predict(X_test)
 
 # evaluation
 confusion_matrix = sklearn.metrics.confusion_matrix(y_test, y_test_pred)
+print(f"Confusion Matrix: \n{confusion_matrix}")
 labels_accuracies = [confusion_matrix[i, i] / confusion_matrix[i, :].sum() for i in range(len(confusion_matrix))]
 labels_names = best_classifier.classes_
 
